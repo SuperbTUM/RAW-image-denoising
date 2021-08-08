@@ -37,23 +37,24 @@ def imageCrop(rggb, size):
     # return np.array(img_list)
 
 
-class UpsideDown:
+class UpsideDown(object):
     def __init__(self, prob=0.5):
         self.prob = prob
 
-    def __call__(self, sample, sample_gt):
+    def __call__(self, inputs):
+        sample, sample_gt = inputs
         if sample_gt is None:
-            return sample, None if np.random.random(1) < self.prob else sample[::-1], None
+            return sample, None if np.random.random(1) < self.prob else sample.flip(dims=[0,1,2]), None
         if np.random.random(1) < self.prob:
             return sample, sample_gt
-        return sample[::-1], sample_gt[::-1]
+        return sample.flip(dims=[0,1,2]), sample_gt.flip(dims=[0,1,2])
 
 
 def collate(batch):
     data = list()
     gt = list()
     for sample in batch:
-        data.append(meg.from_numpy(sample['data']))
+        data.append(sample['data'])
         gt.append(sample['gt'])
     data = meg.stack(data)
     gt = meg.stack(gt)
@@ -81,8 +82,9 @@ class NewDataset(Dataset):
     def __getitem__(self, item):
         sample = self.data[item]
         sample_gt = self.gt[item]
+        assert sample.shape == sample_gt.shape
         if self.transform:
-            sample, sample_gt = self.transform(sample, sample_gt)
+            sample, sample_gt = self.transform((sample, sample_gt))
         return {'data': sample, 'gt': sample_gt}
 
     def set_mode(self, mode='None'):

@@ -1,7 +1,7 @@
 from dataset import load_image, imageCrop, NewDataset, UpsideDown, collate
 from load_model import settings
 from predict import prediction, recovery
-from utils import show, pack_raw, unpack, DataLoaderX
+from utils import show, pack_raw, unpack, DataLoaderX, saveCheckpoint
 
 import rawpy
 # import megengine as meg
@@ -23,6 +23,8 @@ from torch import optim
 from torchsummary import summary
 from torch.autograd import Variable
 
+import gc
+
 
 def PSNR(predict, gt):
     diff = predict - gt
@@ -32,7 +34,7 @@ def PSNR(predict, gt):
 
 
 def test(model, val_data, batch_size):
-    val_dataset = DataLoaderX(val_data, batch_size=batch_size, collate_fn=collate, num_workers=1)
+    val_dataset = DataLoaderX(val_data, batch_size=batch_size, collate_fn=collate, num_workers=0)
     iterator = tqdm(val_dataset)
     cnt = 0
     psnr = 0.
@@ -40,7 +42,7 @@ def test(model, val_data, batch_size):
         cnt += 1
         out = model(sample['data'])
         psnr += PSNR(out, sample['gt'])
-    iterator.set_description('PSNR is {.1f}'.format(psnr / cnt))
+    iterator.set_description('PSNR is {:.1f}'.format(psnr / cnt))
     return psnr / cnt
 
 
@@ -48,7 +50,7 @@ if __name__ == '__main__':
     train_path = 'img_data/train.ARW'
     train_raw = load_image(train_path)
     rggb_train, _, _ = pack_raw(train_raw)
-    size = (24, 32)
+    size = (80, 80)
     train_data = imageCrop(rggb_train, size=size)
 
     gt_path = 'img_data/groundtruth.ARW'
@@ -57,7 +59,7 @@ if __name__ == '__main__':
     gt_data = imageCrop(rggb_gt, size=size)
 
     model, optimizer, lr_scheduler = settings()
-    max_epoch, batch_size = 5, 20
+    max_epoch, batch_size = 5, 10
     cur_epoch = 0
     psnr_best = 0.
 
@@ -76,7 +78,7 @@ if __name__ == '__main__':
             psnr = test(model, val_dataset, batch_size)
             model = model.train()
             psnr_best = max(psnr, psnr_best)
-            print('Cur psnr:{}\tBest psnr:{}'.format(psnr, psnr_best))
+            print('Cur psnr:{:1f} dB\tBest psnr:{:1f} dB'.format(psnr, psnr_best))
 
         train_dataset.set_mode('train')
         # train_dataset = DataLoader(train_data, sampler=RandomSampler(train_data, batch_size=batch_size),
@@ -86,23 +88,26 @@ if __name__ == '__main__':
         iterator = tqdm(train_dataloader)
         for sample in iterator:
             optimizer.zero_grad()
-            predict = Variable(model(sample['data']))
-            true_data = Variable(sample['gt'])
-            loss = M.MSELoss(predict.view(batch_size, -1), true_data.view(batch_size, -1))
+            predict = model(sample['data'])
+            true_data = sample['gt']
+            loss = M.MSELoss()(predict.view(predict.shape[0], -1), true_data.view(true_data.shape[0], -1))
             loss.backward()
-            status = "epoch:{}, iter:{}, lr:{}, loss:{}".format(cur_epoch, lr_scheduler.get_last_lr(),
-                                                                lr_scheduler.get_lr(), loss)
+            status = "epoch:{}, iter:{}, lr:{:2e}, loss:{:2e}".format(cur_epoch, lr_scheduler.get_last_lr()[0],
+                                                                lr_scheduler.get_lr()[0], loss)
             iterator.set_description(status)
             # meg.optimizer.clip_grad_norm(model.parameters(), 10.0)
-            M.utils.clip_grad_norm(model.parameters(), 10.0)
+            M.utils.clip_grad_norm_(model.parameters(), 10.0)
             optimizer.step()
             lr_scheduler.step()
         cur_epoch += 1
+        saveCheckpoint(model, cur_epoch, optimizer, loss, lr_scheduler.get_lr()[0], 'checkpoint.pth')
         if cur_epoch >= max_epoch:
             break
-    train_raw.close()
-    gt_raw.close()
+        gc.collect()
+
+    gc.collect()
     print("----------------------------Training completed-------------------------")
+    print("----------------------------Start prediction---------------------------")
     predict_path = 'img_data/test.ARW'
     predict_raw = load_image(predict_path)
     rggb_predict, black_level, white_level = pack_raw(predict_raw)
@@ -111,7 +116,7 @@ if __name__ == '__main__':
     predict_dataset = NewDataset(predict_data, isTrain=-1)
 
     output = prediction(predict_dataset, model)
-
+    print("---------------------------Display results----------------------------")
     rggb_img = recovery(ori_shape, output, size)
     img = unpack(rggb_img, black_level, white_level)
     visualize = img.postprocess()

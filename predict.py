@@ -5,7 +5,7 @@ from dataset import collate
 
 
 def prediction(data, model):
-    data_loader = DataLoaderX(data, batch_size=20, collate_fn=collate, num_workers=1)
+    data_loader = DataLoaderX(data, batch_size=20, collate_fn=collate, num_workers=0)
     model.training = False
     iterator = tqdm(data_loader)
     out = []

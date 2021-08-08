@@ -2,6 +2,31 @@ import cv2
 import numpy as np
 from prefetch_generator import BackgroundGenerator
 from torch.utils.data import DataLoader
+import torch as meg
+
+
+def saveCheckpoint(model, epoch, optimizer, loss, lr, path):
+    model.eval()
+    meg.save({
+        'epoch': epoch,
+        'model': model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'loss': loss,
+        'lr': lr
+    }, path
+    )
+
+
+def loadCheckpoint(model, optimizer, path):
+    checkpoint = meg.load(path)
+    model.load_state_dict(checkpoint['model'])
+    optimizer.load_state_dict(checkpoint['optimizer'])
+    epoch = checkpoint['epoch']
+    loss = checkpoint['loss']
+    lr = checkpoint['lr']
+    model.eval()
+    backup_info = (model, optimizer, epoch, loss, lr)
+    return backup_info
 
 
 def show(img):
@@ -17,6 +42,7 @@ def pack_raw(raw):
     # raw数据归一化处理，white_level: sensor的白电平，black_level: sensor的黑电平
     white_level = np.max(raw.raw_image)
     black_level = raw.black_level_per_channel[0]
+    raw.close()
     raw = np.maximum(postprocess - black_level, 0) / \
           (white_level - black_level)
     R = raw[0::2, 0::2]  # [0,0]
