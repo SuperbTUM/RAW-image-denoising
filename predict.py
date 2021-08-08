@@ -1,10 +1,12 @@
 import numpy as np
 from tqdm import *
-from torch.utils.data import DataLoader
+from utils import DataLoaderX
+from dataset import collate
 
 
 def prediction(data, model):
-    data_loader = DataLoader(data, batch_size=20, num_workers=1)
+    data_loader = DataLoaderX(data, batch_size=20, collate_fn=collate, num_workers=1)
+    model.training = False
     iterator = tqdm(data_loader)
     out = []
     for sample in iterator:

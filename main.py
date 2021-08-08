@@ -1,7 +1,7 @@
-from dataset import load_image, imageCrop, pack_raw, unpack, NewDataset, UpsideDown
+from dataset import load_image, imageCrop, NewDataset, UpsideDown, collate
 from load_model import settings
 from predict import prediction, recovery
-from utils import show
+from utils import show, pack_raw, unpack, DataLoaderX
 
 import rawpy
 # import megengine as meg
@@ -32,7 +32,7 @@ def PSNR(predict, gt):
 
 
 def test(model, val_data, batch_size):
-    val_dataset = DataLoader(val_data, batch_size=batch_size, num_workers=1)
+    val_dataset = DataLoaderX(val_data, batch_size=batch_size, collate_fn=collate, num_workers=1)
     iterator = tqdm(val_dataset)
     cnt = 0
     psnr = 0.
@@ -50,38 +50,49 @@ if __name__ == '__main__':
     rggb_train, _, _ = pack_raw(train_raw)
     size = (24, 32)
     train_data = imageCrop(rggb_train, size=size)
+
     gt_path = 'img_data/groundtruth.ARW'
     gt_raw = load_image(gt_path)
     rggb_gt, _, _ = pack_raw(gt_raw)
     gt_data = imageCrop(rggb_gt, size=size)
+
     model, optimizer, lr_scheduler = settings()
-    # print(summary(model))
     max_epoch, batch_size = 5, 20
     cur_epoch = 0
     psnr_best = 0.
-    train_data = NewDataset(train_data, gt_data, transform=Compose([UpsideDown()]))
-    val_data = NewDataset(train_data, gt_data, isTrain=False, transform=Compose([UpsideDown()]))
+
+    transform = Compose(
+        [UpsideDown()]
+    )
+    assert train_data.shape == gt_data.shape
+    train_dataset = NewDataset(train_data, gt_data, transform=transform)
+    val_dataset = NewDataset(train_data, gt_data, isTrain=0, transform=transform)
+    print("\n------------------------Start training----------------------------------")
     while True:
         if cur_epoch > 0 and cur_epoch % 2 == 0:
             print('Test phase.\n')
             model.eval()
-            val_data.set_mode('test')
-            psnr = test(model, val_data, batch_size)
+            val_dataset.set_mode('test')
+            psnr = test(model, val_dataset, batch_size)
             model = model.train()
             psnr_best = max(psnr, psnr_best)
             print('Cur psnr:{}\tBest psnr:{}'.format(psnr, psnr_best))
 
-        train_data.set_mode('train')
+        train_dataset.set_mode('train')
         # train_dataset = DataLoader(train_data, sampler=RandomSampler(train_data, batch_size=batch_size),
         #                            num_workers=1)
-        train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=1)
-        iterator = tqdm(train_dataset)
+        train_dataloader = DataLoaderX(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate,
+                                       num_workers=1)
+        iterator = tqdm(train_dataloader)
         for sample in iterator:
             optimizer.zero_grad()
             predict = Variable(model(sample['data']))
             true_data = Variable(sample['gt'])
             loss = M.MSELoss(predict.view(batch_size, -1), true_data.view(batch_size, -1))
             loss.backward()
+            status = "epoch:{}, iter:{}, lr:{}, loss:{}".format(cur_epoch, lr_scheduler.get_last_lr(),
+                                                                lr_scheduler.get_lr(), loss)
+            iterator.set_description(status)
             # meg.optimizer.clip_grad_norm(model.parameters(), 10.0)
             M.utils.clip_grad_norm(model.parameters(), 10.0)
             optimizer.step()
@@ -91,13 +102,13 @@ if __name__ == '__main__':
             break
     train_raw.close()
     gt_raw.close()
-
+    print("----------------------------Training completed-------------------------")
     predict_path = 'img_data/test.ARW'
     predict_raw = load_image(predict_path)
     rggb_predict, black_level, white_level = pack_raw(predict_raw)
     ori_shape = rggb_predict.shape
     predict_data = imageCrop(rggb_predict, size=size)
-    predict_dataset = NewDataset(predict_data)
+    predict_dataset = NewDataset(predict_data, isTrain=-1)
 
     output = prediction(predict_dataset, model)
 
