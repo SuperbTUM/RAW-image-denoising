@@ -1,7 +1,7 @@
 from dataset import load_image, imageCrop, NewDataset, UpsideDown, collate
 from load_model import settings
 from predict import prediction, recovery
-from utils import show, pack_raw, unpack, DataLoaderX, saveCheckpoint
+from utils import show, pack_raw, unpack, DataLoaderX, saveCheckpoint, loadCheckpoint
 
 import rawpy
 # import megengine as meg
@@ -49,13 +49,13 @@ def test(model, val_data, batch_size):
 if __name__ == '__main__':
     train_path = 'img_data/train.ARW'
     train_raw = load_image(train_path)
-    rggb_train, _, _ = pack_raw(train_raw)
+    rggb_train = pack_raw(train_raw)
     size = (80, 80)
     train_data = imageCrop(rggb_train, size=size)
 
     gt_path = 'img_data/groundtruth.ARW'
     gt_raw = load_image(gt_path)
-    rggb_gt, _, _ = pack_raw(gt_raw)
+    rggb_gt = pack_raw(gt_raw)
     gt_data = imageCrop(rggb_gt, size=size)
 
     model, optimizer, lr_scheduler = settings()
@@ -92,25 +92,26 @@ if __name__ == '__main__':
             true_data = sample['gt']
             loss = M.MSELoss()(predict.view(predict.shape[0], -1), true_data.view(true_data.shape[0], -1))
             loss.backward()
-            status = "epoch:{}, iter:{}, lr:{:2e}, loss:{:2e}".format(cur_epoch, lr_scheduler.get_last_lr()[0],
-                                                                lr_scheduler.get_lr()[0], loss)
+            status = "epoch:{}, lr:{:2e}, loss:{:2e}".format(cur_epoch,
+                                                             lr_scheduler.get_lr()[0], loss)
             iterator.set_description(status)
             # meg.optimizer.clip_grad_norm(model.parameters(), 10.0)
             M.utils.clip_grad_norm_(model.parameters(), 10.0)
             optimizer.step()
             lr_scheduler.step()
         cur_epoch += 1
-        saveCheckpoint(model, cur_epoch, optimizer, loss, lr_scheduler.get_lr()[0], 'checkpoint.pth')
         if cur_epoch >= max_epoch:
             break
         gc.collect()
-
+    saveCheckpoint(model, cur_epoch, optimizer, loss, lr_scheduler.get_lr()[0], 'checkpoint.pth')
     gc.collect()
     print("----------------------------Training completed-------------------------")
     print("----------------------------Start prediction---------------------------")
+
+    # model, optimizer, epoch, loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth')
     predict_path = 'img_data/test.ARW'
     predict_raw = load_image(predict_path)
-    rggb_predict, black_level, white_level = pack_raw(predict_raw)
+    rggb_predict = pack_raw(predict_raw)
     ori_shape = rggb_predict.shape
     predict_data = imageCrop(rggb_predict, size=size)
     predict_dataset = NewDataset(predict_data, isTrain=-1)
@@ -118,8 +119,4 @@ if __name__ == '__main__':
     output = prediction(predict_dataset, model)
     print("---------------------------Display results----------------------------")
     rggb_img = recovery(ori_shape, output, size)
-    img = unpack(rggb_img, black_level, white_level)
-    visualize = img.postprocess()
-    show(visualize)
-
-    predict_raw.close()
+    # show(rggb_img)

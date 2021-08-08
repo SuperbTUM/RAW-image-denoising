@@ -44,7 +44,7 @@ class UpsideDown(object):
     def __call__(self, inputs):
         sample, sample_gt = inputs
         if sample_gt is None:
-            return sample, None if np.random.random(1) < self.prob else sample.flip(dims=[0,1,2]), None
+            return (sample, None) if np.random.random(1) < self.prob else (sample.flip(dims=[0,1,2]), None)
         if np.random.random(1) < self.prob:
             return sample, sample_gt
         return sample.flip(dims=[0,1,2]), sample_gt.flip(dims=[0,1,2])
@@ -55,9 +55,11 @@ def collate(batch):
     gt = list()
     for sample in batch:
         data.append(sample['data'])
-        gt.append(sample['gt'])
+        if sample['gt'] is not None:
+            gt.append(sample['gt'])
     data = meg.stack(data)
-    gt = meg.stack(gt)
+    if gt:
+        gt = meg.stack(gt)
     return {'data': data, 'gt': gt}
 
 
@@ -65,15 +67,16 @@ class NewDataset(Dataset):
     def __init__(self, dataset, ground_truth=None, transform=None, isTrain=1):
         super().__init__()
         self.transform = transform
+        self.isTrain = isTrain
         train_size = floor(0.8 * len(dataset))
-        if isTrain == 1:
+        if self.isTrain == 1:
             self.data = dataset[:train_size]
             self.gt = ground_truth[:train_size]
-        elif isTrain == 0:
+        elif self.isTrain == 0:
             self.data = dataset[train_size:]
             self.gt = ground_truth[train_size:]
         else:
-            self.data = dataset.copy()
+            self.data = dataset
             self.gt = None
 
     def __len__(self):
@@ -81,11 +84,16 @@ class NewDataset(Dataset):
 
     def __getitem__(self, item):
         sample = self.data[item]
-        sample_gt = self.gt[item]
-        assert sample.shape == sample_gt.shape
-        if self.transform:
-            sample, sample_gt = self.transform((sample, sample_gt))
-        return {'data': sample, 'gt': sample_gt}
+        if self.isTrain >= 0:
+            sample_gt = self.gt[item]
+            assert sample.shape == sample_gt.shape
+            if self.transform:
+                sample, sample_gt = self.transform((sample, sample_gt))
+            return {'data': sample, 'gt': sample_gt}
+        else:
+            if self.transform:
+                sample, _ = self.transform((sample, None))
+            return {'data': sample, 'gt': None}
 
     def set_mode(self, mode='None'):
         self.mode = mode
