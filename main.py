@@ -1,7 +1,7 @@
 from dataset import load_image, imageCrop, NewDataset, UpsideDown, collate
 from load_model import settings
 from predict import prediction, recovery
-from utils import show, pack_raw, unpack, DataLoaderX, saveCheckpoint, loadCheckpoint
+from utils import show_and_save, pack_raw, unpack, DataLoaderX, saveCheckpoint, loadCheckpoint
 
 import rawpy
 # import megengine as meg
@@ -50,12 +50,14 @@ if __name__ == '__main__':
     train_path = 'img_data/train.ARW'
     train_raw = load_image(train_path)
     rggb_train = pack_raw(train_raw)
+    rggb_train = rggb_train.transpose(2, 0, 1)
     size = (80, 80)
     train_data = imageCrop(rggb_train, size=size)
 
     gt_path = 'img_data/groundtruth.ARW'
     gt_raw = load_image(gt_path)
     rggb_gt = pack_raw(gt_raw)
+    rggb_gt = rggb_gt.transpose(2, 0, 1)
     gt_data = imageCrop(rggb_gt, size=size)
 
     model, optimizer, lr_scheduler = settings()
@@ -108,10 +110,11 @@ if __name__ == '__main__':
     print("----------------------------Training completed-------------------------")
     print("----------------------------Start prediction---------------------------")
 
-    # model, optimizer, epoch, loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth')
+    model, optimizer, epoch, loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth')
     predict_path = 'img_data/test.ARW'
     predict_raw = load_image(predict_path)
     rggb_predict = pack_raw(predict_raw)
+    rggb_predict = rggb_predict.transpose(2, 0, 1)
     ori_shape = rggb_predict.shape
     predict_data = imageCrop(rggb_predict, size=size)
     predict_dataset = NewDataset(predict_data, isTrain=-1)
@@ -119,4 +122,4 @@ if __name__ == '__main__':
     output = prediction(predict_dataset, model)
     print("---------------------------Display results----------------------------")
     rggb_img = recovery(ori_shape, output, size)
-    # show(rggb_img)
+    # show_and_save(rggb_img)
