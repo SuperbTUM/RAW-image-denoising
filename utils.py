@@ -30,15 +30,28 @@ def loadCheckpoint(model, optimizer, path):
     return backup_info
 
 
-def show_and_save(img):
-    img = np.uint8(img)
-    g = 0.5 * (img[:, :, 1] + img[:, :, 2])
-    rgb_img = np.stack((img[:, :, 0], g, img[:, :, 3]), axis=-1) * 255
+def show_and_save(img, norm_num, raw):
+    img = img.transpose(1, 2, 0).clip(0, 1)
+    for i in range(4):
+        img[:, :, i] *= norm_num[i]
+    new_raw = unpack(img)
+    raw.raw_image_visible[:] = new_raw
+    rgb_img = raw.postprocess(use_camera_wb=True)
     cv2.namedWindow('image', cv2.WINDOW_NORMAL)
     cv2.imshow('image', rgb_img)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    # cv2.imwrite('result_image.jpg', rgb_img)
+    cv2.imwrite('result_image.jpg', rgb_img)
+
+
+def norm(img):
+    assert img.shape[0] == 4
+    norm_num = []
+    for i in range(img.shape[0]):
+        val = max(map(max, img[i, :, :]))
+        norm_num.append(val)
+        img[i, :, :] /= val
+    return img, norm_num
 
 
 def pack_raw(raw):
@@ -50,25 +63,19 @@ def pack_raw(raw):
             .transpose(0, 2, 1, 3)
             .reshape(H // 2, W // 2, 4)
     )
-    raw.close()
+    # raw.close()
     return np.array(res)
 
 
-def unpack(raw, black_level, white_level):
-    # 4->1 raw:(H, W, 4) --> out:(2 * H, 2 * W)
-    # 创建一个和raw数据单通道大小相同的全0数组
-    out = np.zeros((raw.shape[0] * 2, raw.shape[1] * 2))
-
-    # 按R,Gr,Gb,B的顺序赋值给out数组，最后out就是raw数据的单通道数组
-    out[0::2, 0::2] = raw[:, :, 0]
-    out[0::2, 1::2] = raw[:, :, 1]
-    out[1::2, 0::2] = raw[:, :, 2]
-    out[1::2, 1::2] = raw[:, :, 3]
-
-    # 将归一化的数据恢复到原样
-    out = out * (white_level - black_level) + black_level
-    out = np.minimum(np.maximum(out, black_level), white_level).astype(np.uint16)
-    return out
+def unpack(rggb):
+    res = []
+    H, W, _ = rggb.shape
+    res.extend(
+        rggb.reshape(H, W, 2, 2)
+            .transpose(0, 2, 1, 3)
+            .reshape(H * 2, W * 2)
+    )
+    return np.array(res)
 
 
 class DataLoaderX(DataLoader):
@@ -79,11 +86,11 @@ class DataLoaderX(DataLoader):
 
 if __name__ == '__main__':
     raw = rawpy.imread('img_data/train.ARW')
-    rggb = pack_raw(raw)
-    # from PMRID
-    rggb = rggb.clip(0, 1)
-    H, W = rggb.shape[:2]
-    ph, pw = (32 - (H % 32)) // 2, (32 - (W % 32)) // 2
-    rggb = np.pad(rggb, [(ph, ph), (pw, pw), (0, 0)], 'constant')
-    inp_rggb = rggb.transpose(2, 0, 1)[np.newaxis]
-    print(inp_rggb)
+    rggb = pack_raw(raw)  # rggb data
+    new_raw = unpack(rggb)  # bayer data (H, W)
+    raw.raw_image_visible[:] = new_raw
+    rgb = raw.postprocess(use_camera_wb=True)
+    cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+    cv2.imshow('image', rgb)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()

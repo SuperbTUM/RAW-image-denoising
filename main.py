@@ -1,7 +1,7 @@
 from dataset import load_image, imageCrop, NewDataset, UpsideDown, collate
 from load_model import settings
 from predict import prediction, recovery
-from utils import show_and_save, pack_raw, unpack, DataLoaderX, saveCheckpoint, loadCheckpoint
+from utils import *
 
 import rawpy
 # import megengine as meg
@@ -47,20 +47,24 @@ def test(model, val_data, batch_size):
 
 
 if __name__ == '__main__':
+    size = (80, 80)
+    model, optimizer, lr_scheduler = settings()
+
     train_path = 'img_data/train.ARW'
     train_raw = load_image(train_path)
     rggb_train = pack_raw(train_raw)
     rggb_train = rggb_train.transpose(2, 0, 1)
-    size = (80, 80)
+    rggb_train, _ = norm(rggb_train)
+
     train_data = imageCrop(rggb_train, size=size)
 
     gt_path = 'img_data/groundtruth.ARW'
     gt_raw = load_image(gt_path)
     rggb_gt = pack_raw(gt_raw)
     rggb_gt = rggb_gt.transpose(2, 0, 1)
+    rggb_gt, _ = norm(rggb_gt)
     gt_data = imageCrop(rggb_gt, size=size)
 
-    model, optimizer, lr_scheduler = settings()
     max_epoch, batch_size = 5, 10
     cur_epoch = 0
     psnr_best = 0.
@@ -106,15 +110,19 @@ if __name__ == '__main__':
             break
         gc.collect()
     saveCheckpoint(model, cur_epoch, optimizer, loss, lr_scheduler.get_lr()[0], 'checkpoint.pth')
+    train_raw.close()
+    gt_raw.close()
     gc.collect()
     print("----------------------------Training completed-------------------------")
     print("----------------------------Start prediction---------------------------")
 
-    model, optimizer, epoch, loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth')
+    # model, optimizer, epoch, loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth')
     predict_path = 'img_data/test.ARW'
     predict_raw = load_image(predict_path)
     rggb_predict = pack_raw(predict_raw)
     rggb_predict = rggb_predict.transpose(2, 0, 1)
+    rggb_predict, norm_num = norm(rggb_predict)
+
     ori_shape = rggb_predict.shape
     predict_data = imageCrop(rggb_predict, size=size)
     predict_dataset = NewDataset(predict_data, isTrain=-1)
@@ -122,4 +130,6 @@ if __name__ == '__main__':
     output = prediction(predict_dataset, model)
     print("---------------------------Display results----------------------------")
     rggb_img = recovery(ori_shape, output, size)
-    # show_and_save(rggb_img)
+    show_and_save(rggb_img, norm_num, predict_raw)
+    predict_raw.close()
+
