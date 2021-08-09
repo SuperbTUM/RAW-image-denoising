@@ -85,7 +85,7 @@ class DataLoaderX(DataLoader):
 
 
 if __name__ == '__main__':
-    raw = rawpy.imread('img_data/train.ARW')
+    raw = rawpy.imread('img_data/groundtruth.ARW')
     rggb = pack_raw(raw)  # rggb data
     new_raw = unpack(rggb)  # bayer data (H, W)
     raw.raw_image_visible[:] = new_raw
