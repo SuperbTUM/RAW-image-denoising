@@ -34,7 +34,6 @@ def imageCrop(rggb, size):
             temp[:, 0:(overall_h - h*rows), 0:(overall_w - w*cols)] = rggb[:, h * rows:, w*cols:]
             img_list.append(temp)
     return meg.Tensor(img_list)
-    # return np.array(img_list)
 
 
 class UpsideDown(object):
@@ -44,10 +43,10 @@ class UpsideDown(object):
     def __call__(self, inputs):
         sample, sample_gt = inputs
         if sample_gt is None:
-            return (sample, None) if np.random.random(1) < self.prob else (sample.flip(dims=[0,1,2]), None)
+            return (sample, None) if np.random.random(1) < self.prob else (sample.flip(dims=[1,2]), None)
         if np.random.random(1) < self.prob:
             return sample, sample_gt
-        return sample.flip(dims=[0,1,2]), sample_gt.flip(dims=[0,1,2])
+        return sample.flip(dims=[1,2]), sample_gt.flip(dims=[1,2])
 
 
 def collate(batch):

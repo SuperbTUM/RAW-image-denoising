@@ -29,20 +29,18 @@ class Encoder(M.Module):
         self.sepconv = CovSepBlock(in_channels, out_channels // 4, padding=2)
         self.activate = M.ReLU(inplace=True)
         self.sepconv2 = CovSepBlock(out_channels // 4, out_channels, padding=2)
-        self.proj = None
+        self.proj = M.Identity()
         if in_channels != out_channels:
             self.proj = CovSepBlock(in_channels, out_channels, kernel_size=3, padding=1)
+        self.activate2 = M.ReLU(inplace=True)
 
     def forward(self, x):
-        if self.proj:
-            branch = self.proj(x)
-        else:
-            branch = x
+        branch = self.proj(x)
         x = self.sepconv(x)
         x = self.activate(x)
         x = self.sepconv2(x)
         x += branch
-        return self.activate(x)
+        return self.activate2(x)
 
 
 class Upsampling(M.Module):
@@ -62,6 +60,7 @@ class Downsampling(M.Module):
         self.activate = M.ReLU(inplace=True)
         self.sepconv2 = CovSepBlock(in_channels=out_channels // 4, out_channels=out_channels, padding=2)
         self.branchconv = CovSepBlock(in_channels, out_channels, kernel_size=3, stride=2, padding=1)
+        self.activate2 = M.ReLU(inplace=True)
 
     def forward(self, x):
         branch = x
@@ -69,7 +68,8 @@ class Downsampling(M.Module):
         x = self.activate(x)
         x = self.sepconv2(x)
         branch = self.branchconv(branch)
-        return x + branch
+        x += branch
+        return self.activate2(x)
 
 
 class Decoder(M.Module):
@@ -88,18 +88,15 @@ class Decoder(M.Module):
         return x + branch
 
 
-class EncoderStage(M.Module):
-    def __init__(self, in_channels, out_channels, num_encoder):
-        super().__init__()
-        self.encoder = Encoder(out_channels, out_channels)
-        self.downsampling = Downsampling(in_channels, out_channels)
-        self.num = num_encoder
-
-    def forward(self, x):
-        x = self.downsampling(x)
-        for _ in range(self.num):
-            x = self.encoder(x)
-        return x
+def EncoderStage(in_channels, out_channels, num_encoder):
+    seq = [
+        Downsampling(in_channels, out_channels),
+    ]
+    for _ in range(num_encoder):
+        seq.append(
+            Encoder(out_channels, out_channels)
+        )
+    return M.Sequential(*seq)
 
 
 class DecoderStage(M.Module):
@@ -130,7 +127,11 @@ class SimpleNet(M.Module):
         self.encoder_stage3 = EncoderStage(in_channels=128, out_channels=256, num_encoder=3)
         self.encoder_stage4 = EncoderStage(in_channels=256, out_channels=512, num_encoder=3)
 
-        self.decoder_stage1 = DecoderStage(in_channels=512, skip_in_channels=256, out_channels=64)
+        # Strange ???
+        self.enc2dec = CovSepBlock(in_channels=512, out_channels=64, kernel_size=3, padding=1)
+        self.med_activate = M.ReLU(inplace=True)
+
+        self.decoder_stage1 = DecoderStage(in_channels=64, skip_in_channels=256, out_channels=64)
         self.decoder_stage2 = DecoderStage(in_channels=64, skip_in_channels=128, out_channels=32)
         self.decoder_stage3 = DecoderStage(in_channels=32, skip_in_channels=64, out_channels=32)
         self.decoder_stage4 = DecoderStage(in_channels=32, skip_in_channels=16, out_channels=16)
@@ -141,25 +142,19 @@ class SimpleNet(M.Module):
         assert img.shape[1] == 4
         pre = self.conv(img)
         pre = self.relu(pre)
-        assert pre.shape[1] == 16
         first = self.encoder_stage1(pre)
-        assert first.shape[1] == 64
         second = self.encoder_stage2(first)
-        assert second.shape[1] == 128
         third = self.encoder_stage3(second)
-        assert third.shape[1] == 256
         fourth = self.encoder_stage4(third)
-        assert fourth.shape[1] == 512
-        de_first = self.decoder_stage1((fourth, third))
-        assert de_first.shape[1] == 64
+
+        med = self.enc2dec(fourth)
+        med = self.med_activate(med)
+
+        de_first = self.decoder_stage1((med, third))
         de_second = self.decoder_stage2((de_first, second))
-        assert de_second.shape[1] == 32
         de_thrid = self.decoder_stage3((de_second, first))
-        assert de_thrid.shape[1] == 32
         de_fourth = self.decoder_stage4((de_thrid, pre))
-        assert de_fourth.shape[1] == 16
         output = self.output_layer(de_fourth)
-        assert output.shape[1] == 4
         return output + img
 
 

@@ -48,7 +48,7 @@ def test(model, val_data, batch_size):
 
 if __name__ == '__main__':
     size = (80, 80)
-    model, optimizer, lr_scheduler = settings()
+    model, optimizer, lr_scheduler = settings(pretrained="torch_pretrained.ckp")
 
     train_path = 'img_data/train.ARW'
     train_raw = load_image(train_path)
@@ -65,9 +65,10 @@ if __name__ == '__main__':
     rggb_gt, _ = norm(rggb_gt)
     gt_data = imageCrop(rggb_gt, size=size)
 
-    max_epoch, batch_size = 5, 10
+    max_epoch, batch_size = 10, 10
     cur_epoch = 0
     psnr_best = 0.
+    loss_mean = list()
 
     transform = Compose(
         [UpsideDown()]
@@ -86,17 +87,22 @@ if __name__ == '__main__':
             psnr_best = max(psnr, psnr_best)
             print('Cur psnr:{:1f} dB\tBest psnr:{:1f} dB'.format(psnr, psnr_best))
 
+        if cur_epoch >= max_epoch:
+            break
         train_dataset.set_mode('train')
         # train_dataset = DataLoader(train_data, sampler=RandomSampler(train_data, batch_size=batch_size),
         #                            num_workers=1)
         train_dataloader = DataLoaderX(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate,
                                        num_workers=1)
         iterator = tqdm(train_dataloader)
+        loss_list = list()
         for sample in iterator:
             optimizer.zero_grad()
             predict = model(sample['data'])
             true_data = sample['gt']
-            loss = M.MSELoss()(predict.view(predict.shape[0], -1), true_data.view(true_data.shape[0], -1))
+            loss = M.L1Loss()(predict.view(predict.shape[0], -1),
+                               true_data.view(true_data.shape[0], -1))
+            loss_list.append(loss.detach().numpy())
             loss.backward()
             status = "epoch:{}, lr:{:2e}, loss:{:2e}".format(cur_epoch,
                                                              lr_scheduler.get_lr()[0], loss)
@@ -106,13 +112,16 @@ if __name__ == '__main__':
             optimizer.step()
             lr_scheduler.step()
         cur_epoch += 1
-        if cur_epoch >= max_epoch:
-            break
+        loss_mean.append(sum(loss_list) / len(loss_list))
         gc.collect()
+
     saveCheckpoint(model, cur_epoch, optimizer, loss, lr_scheduler.get_lr()[0], 'checkpoint.pth')
+    # drawLossCurve(loss_mean)
+
     train_raw.close()
     gt_raw.close()
     gc.collect()
+
     print("----------------------------Training completed-------------------------")
     print("----------------------------Start prediction---------------------------")
 
@@ -132,4 +141,3 @@ if __name__ == '__main__':
     rggb_img = recovery(ori_shape, output, size)
     show_and_save(rggb_img, norm_num, predict_raw)
     predict_raw.close()
-

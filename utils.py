@@ -4,6 +4,19 @@ from prefetch_generator import BackgroundGenerator
 from torch.utils.data import DataLoader
 import torch as meg
 import rawpy
+import matplotlib.pyplot as plt
+
+
+def drawLossCurve(loss_mean):
+    assert len(loss_mean) > 0
+    # plt.figure()
+    plt.plot(loss_mean, linewidth=2)
+    plt.xlabel('epoch')
+    plt.ylabel('MSE loss (sum/mean)')
+    plt.title('training loss curve')
+    # plt.show()
+    plt.savefig("loss_curve.png")
+    return
 
 
 def saveCheckpoint(model, epoch, optimizer, loss, lr, path):
@@ -37,6 +50,7 @@ def show_and_save(img, norm_num, raw):
     new_raw = unpack(img)
     raw.raw_image_visible[:] = new_raw
     rgb_img = raw.postprocess(use_camera_wb=True)
+    rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
     cv2.namedWindow('image', cv2.WINDOW_NORMAL)
     cv2.imshow('image', rgb_img)
     cv2.waitKey(0)
@@ -85,12 +99,15 @@ class DataLoaderX(DataLoader):
 
 
 if __name__ == '__main__':
-    raw = rawpy.imread('img_data/groundtruth.ARW')
+    raw = rawpy.imread('img_data/test.ARW')
     rggb = pack_raw(raw)  # rggb data
     new_raw = unpack(rggb)  # bayer data (H, W)
     raw.raw_image_visible[:] = new_raw
     rgb = raw.postprocess(use_camera_wb=True)
+    rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
     cv2.namedWindow('image', cv2.WINDOW_NORMAL)
     cv2.imshow('image', rgb)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+    cv2.imwrite('test_img.jpg', rgb)
+
