@@ -6,6 +6,7 @@ import torch as meg
 import rawpy
 import matplotlib.pyplot as plt
 from dataset import load_image, imageCrop
+from K_Sigma_transform import KSigma
 
 
 def getRawInfo():
@@ -16,6 +17,14 @@ def getRawInfo():
         "Exposure Compensation": 0
     }
     return info
+
+
+def ksigmaTransform(rggb, inverse=False):
+    K_coeff = (0.0005995267, 0.00868861)
+    B_coeff = (7.11772e-7, 6.514934e-4, 0.11492713)
+    anchor = 1600
+    ksigma = KSigma(K_coeff, B_coeff, anchor)
+    return ksigma(rggb, getRawInfo()['ISO'], inverse=inverse)
 
 
 def loadTrainableData(path, size):

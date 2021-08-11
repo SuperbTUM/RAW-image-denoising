@@ -33,7 +33,7 @@ def PSNR(predict, gt):
     return 20 * meg.log10(1. / rmse)
 
 
-def test(model, val_data, batch_size):
+def test(model, val_data, batch_size, inp_scale):
     val_dataset = DataLoaderX(val_data, batch_size=batch_size, collate_fn=collate, num_workers=0)
     iterator = tqdm(val_dataset)
     cnt = 0
@@ -41,6 +41,7 @@ def test(model, val_data, batch_size):
     for sample in iterator:
         cnt += 1
         out = model(sample['data'])
+        out = ksigmaTransform(out / inp_scale, inverse=True)
         psnr += PSNR(out, sample['gt'])
     iterator.set_description('PSNR is {:.1f}'.format(psnr / cnt))
     return psnr / cnt
@@ -48,10 +49,14 @@ def test(model, val_data, batch_size):
 
 if __name__ == '__main__':
     size = (80, 80)
+    inp_scale = 256
     model, optimizer, lr_scheduler = settings(pretrained="torch_pretrained.ckp")
 
     train_data, train_raw, train_norm, _ = loadTrainableData('img_data/train.ARW', size)
     gt_data, gt_raw, _, _ = loadTrainableData('img_data/groundtruth.ARW', size)
+
+    # K-sigma transformation
+    train_data = ksigmaTransform(train_data) * inp_scale
 
     max_epoch, batch_size = 10, 10
     cur_epoch = 0
@@ -80,7 +85,7 @@ if __name__ == '__main__':
             print('Test phase.\n')
             model.eval()
             val_dataset.set_mode('test')
-            psnr = test(model, val_dataset, batch_size)
+            psnr = test(model, val_dataset, batch_size, inp_scale)
             model = model.train()
             psnr_best = max(psnr, psnr_best)
             print('Cur psnr:{:1f} dB\tBest psnr:{:1f} dB'.format(psnr, psnr_best))
@@ -97,6 +102,7 @@ if __name__ == '__main__':
         for sample in iterator:
             optimizer.zero_grad()
             predict = model(sample['data'])
+            predict = ksigmaTransform(predict / inp_scale, inverse=True)
             true_data = sample['gt']
             loss = M.L1Loss()(predict.view(predict.shape[0], -1),
                               true_data.view(true_data.shape[0], -1))
@@ -125,9 +131,11 @@ if __name__ == '__main__':
     # model, optimizer, epoch, loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth')
     predict_path = 'img_data/test.ARW'
     predict_data, predict_raw, norm_num, shape = loadTrainableData(predict_path, size)
+    predict_data = ksigmaTransform(predict_data) * inp_scale
     predict_dataset = NewDataset(predict_data, isTrain=-1)
 
     output = prediction(predict_dataset, model)
+    output = ksigmaTransform(meg.stack(output) / inp_scale, inverse=True)
     print("---------------------------Display results----------------------------")
     ori_shape = shape
     rggb_img = recovery(ori_shape, output, size)
