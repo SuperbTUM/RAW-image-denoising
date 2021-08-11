@@ -49,6 +49,53 @@ class UpsideDown(object):
         return sample.flip(dims=[1,2]), sample_gt.flip(dims=[1,2])
 
 
+class HorizontalFlip(object):
+    def __init__(self, prob=0.5):
+        self.prob = prob
+
+    def __call__(self, inputs):
+        sample, sample_gt = inputs
+        if sample_gt is None:
+            return (sample, None) if np.random.random(1) < self.prob else (sample.flip(dims=[2]), None)
+        if np.random.random(1) < self.prob:
+            return sample, sample_gt
+        return sample.flip(dims=[2]), sample_gt.flip(dims=[2])
+
+
+class VerticalFlip(object):
+    def __init__(self, prob=0.5):
+        self.prob = prob
+
+    def __call__(self, inputs):
+        sample, sample_gt = inputs
+        if sample_gt is None:
+            return (sample, None) if np.random.random(1) < self.prob else (sample.flip(dims=[1]), None)
+        if np.random.random(1) < self.prob:
+            return sample, sample_gt
+        return sample.flip(dims=[1]), sample_gt.flip(dims=[1])
+
+
+class BrightnessContrast(object):
+    def __init__(self, norm_num, prob=0.5):
+        self.prob = prob
+        self.norm_num = norm_num
+
+    def __call__(self, inputs):
+        sample, sample_gt = inputs
+        if meg.rand(1) < self.prob:
+            alpha = meg.rand(1) + 0.5
+            beta_ = meg.rand(1) * 150 + 50
+            beta = meg.Tensor([beta_ / self.norm_num[i] for i in range(4)])
+            sample = sample.permute(1, 2, 0)
+            sample = alpha * sample + beta
+            sample = sample.permute(2, 0, 1)
+            if sample_gt is not None:
+                sample_gt = sample_gt.permute(1, 2, 0)
+                sample_gt = alpha * sample_gt + beta
+                sample_gt = sample_gt.permute(2, 0, 1)
+        return sample, sample_gt
+
+
 def collate(batch):
     data = list()
     gt = list()
@@ -98,6 +145,13 @@ class NewDataset(Dataset):
         self.mode = mode
 
 
+if __name__ == "__main__":
+    a = np.ones((4, 10, 10))
+    a = meg.from_numpy(a)
+    a = a.permute(1, 2, 0)
+    print(a.shape)
+    b = np.array([1,1,1,1])
+    1.5 * a + b
 
 
 

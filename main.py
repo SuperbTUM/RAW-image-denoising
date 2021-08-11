@@ -1,4 +1,4 @@
-from dataset import load_image, imageCrop, NewDataset, UpsideDown, collate
+from dataset import *
 from load_model import settings
 from predict import prediction, recovery
 from utils import *
@@ -50,20 +50,8 @@ if __name__ == '__main__':
     size = (80, 80)
     model, optimizer, lr_scheduler = settings(pretrained="torch_pretrained.ckp")
 
-    train_path = 'img_data/train.ARW'
-    train_raw = load_image(train_path)
-    rggb_train = pack_raw(train_raw)
-    rggb_train = rggb_train.transpose(2, 0, 1)
-    rggb_train, _ = norm(rggb_train)
-
-    train_data = imageCrop(rggb_train, size=size)
-
-    gt_path = 'img_data/groundtruth.ARW'
-    gt_raw = load_image(gt_path)
-    rggb_gt = pack_raw(gt_raw)
-    rggb_gt = rggb_gt.transpose(2, 0, 1)
-    rggb_gt, _ = norm(rggb_gt)
-    gt_data = imageCrop(rggb_gt, size=size)
+    train_data, train_raw, train_norm, _ = loadTrainableData('img_data/train.ARW', size)
+    gt_data, gt_raw, _, _ = loadTrainableData('img_data/groundtruth.ARW', size)
 
     max_epoch, batch_size = 10, 10
     cur_epoch = 0
@@ -73,9 +61,19 @@ if __name__ == '__main__':
     transform = Compose(
         [UpsideDown()]
     )
+    # transform = Compose(
+    #     [
+    #         HorizontalFlip(),
+    #         VerticalFlip()
+    #     ]
+    # )
+    train_transform = Compose(
+        [BrightnessContrast(train_norm),
+         UpsideDown()]
+    )
     assert train_data.shape == gt_data.shape
-    train_dataset = NewDataset(train_data, gt_data, transform=transform)
-    val_dataset = NewDataset(train_data, gt_data, isTrain=0, transform=transform)
+    train_dataset = NewDataset(train_data, gt_data, transform=train_transform)
+    val_dataset = NewDataset(train_data, gt_data, isTrain=0, transform=train_transform)
     print("\n------------------------Start training----------------------------------")
     while True:
         if cur_epoch > 0 and cur_epoch % 2 == 0:
@@ -101,7 +99,7 @@ if __name__ == '__main__':
             predict = model(sample['data'])
             true_data = sample['gt']
             loss = M.L1Loss()(predict.view(predict.shape[0], -1),
-                               true_data.view(true_data.shape[0], -1))
+                              true_data.view(true_data.shape[0], -1))
             loss_list.append(loss.detach().numpy())
             loss.backward()
             status = "epoch:{}, lr:{:2e}, loss:{:2e}".format(cur_epoch,
@@ -117,7 +115,6 @@ if __name__ == '__main__':
 
     saveCheckpoint(model, cur_epoch, optimizer, loss, lr_scheduler.get_lr()[0], 'checkpoint.pth')
     # drawLossCurve(loss_mean)
-
     train_raw.close()
     gt_raw.close()
     gc.collect()
@@ -127,17 +124,12 @@ if __name__ == '__main__':
 
     # model, optimizer, epoch, loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth')
     predict_path = 'img_data/test.ARW'
-    predict_raw = load_image(predict_path)
-    rggb_predict = pack_raw(predict_raw)
-    rggb_predict = rggb_predict.transpose(2, 0, 1)
-    rggb_predict, norm_num = norm(rggb_predict)
-
-    ori_shape = rggb_predict.shape
-    predict_data = imageCrop(rggb_predict, size=size)
+    predict_data, predict_raw, norm_num, shape = loadTrainableData(predict_path, size)
     predict_dataset = NewDataset(predict_data, isTrain=-1)
 
     output = prediction(predict_dataset, model)
     print("---------------------------Display results----------------------------")
+    ori_shape = shape
     rggb_img = recovery(ori_shape, output, size)
     show_and_save(rggb_img, norm_num, predict_raw)
     predict_raw.close()

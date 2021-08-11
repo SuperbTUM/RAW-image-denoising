@@ -5,6 +5,26 @@ from torch.utils.data import DataLoader
 import torch as meg
 import rawpy
 import matplotlib.pyplot as plt
+from dataset import load_image, imageCrop
+
+
+def getRawInfo():
+    info = {
+        "Exposure Time": 0.25,
+        "Aperture": "f 1/16",
+        'ISO': 12800,
+        "Exposure Compensation": 0
+    }
+    return info
+
+
+def loadTrainableData(path, size):
+    raw = load_image(path)
+    rggb = pack_raw(raw)
+    rggb = rggb.transpose(2, 0, 1)
+    rggb, norm_num = norm(rggb)
+    data = imageCrop(rggb, size=size)
+    return data, raw, norm_num, rggb.shape
 
 
 def drawLossCurve(loss_mean):
@@ -92,6 +112,14 @@ def unpack(rggb):
     return np.array(res)
 
 
+def amendment(rggb):
+    rggb[:, 0, 0] = (rggb[:, 1, 0] + rggb[:, 1, 1] + rggb[:, 0, 1]) / 3  # top-left
+    rggb[:, -1, 0] = (rggb[:, -2, 0] + rggb[:, -1, 1] + rggb[:, -2, 1]) / 3  # bottom-left
+    rggb[:, 0, -1] = (rggb[:, 1, -1] + rggb[:, 0, -2] + rggb[:, 1, -2]) / 3  # top-right
+    rggb[:, -1, -1] = (rggb[:, -1, -2] + rggb[:, -2, -1] + rggb[:, -2, -2]) / 3  # bottom-right
+    return rggb
+
+
 class DataLoaderX(DataLoader):
 
     def __iter__(self):
@@ -101,6 +129,7 @@ class DataLoaderX(DataLoader):
 if __name__ == '__main__':
     raw = rawpy.imread('img_data/test.ARW')
     rggb = pack_raw(raw)  # rggb data
+    rggb += 200
     new_raw = unpack(rggb)  # bayer data (H, W)
     raw.raw_image_visible[:] = new_raw
     rgb = raw.postprocess(use_camera_wb=True)
@@ -109,5 +138,5 @@ if __name__ == '__main__':
     cv2.imshow('image', rgb)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    cv2.imwrite('test_img.jpg', rgb)
+    # cv2.imwrite('test_img.jpg', rgb)
 
