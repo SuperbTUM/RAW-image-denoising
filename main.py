@@ -33,14 +33,16 @@ def PSNR(predict, gt):
     return 20 * meg.log10(1. / rmse)
 
 
-def test(model, val_data, batch_size, inp_scale):
+def test(model, val_data, batch_size, inp_scale, cuda):
     val_dataset = DataLoaderX(val_data, batch_size=batch_size, collate_fn=collate, num_workers=0)
     iterator = tqdm(val_dataset)
     cnt = 0
     psnr = 0.
     for sample in iterator:
         cnt += 1
-        out = model(sample['data'])
+        if cuda:
+            sample['data'] = Variable(sample['data']).cuda()
+        out = model(sample['data']).cpu()
         out = ksigmaTransform(out / inp_scale, inverse=True)
         psnr += PSNR(out, sample['gt'])
     iterator.set_description('PSNR is {:.1f}'.format(psnr / cnt))
@@ -48,9 +50,10 @@ def test(model, val_data, batch_size, inp_scale):
 
 
 if __name__ == '__main__':
+    cuda = False
     size = (80, 80)
     inp_scale = 256
-    model, optimizer, lr_scheduler = settings(pretrained="torch_pretrained.ckp")
+    model, optimizer, lr_scheduler = settings(pretrained="torch_pretrained.ckp", cuda=cuda)
 
     train_data, train_raw, train_norm, _ = loadTrainableData('img_data/train.ARW', size)
     gt_data, gt_raw, _, _ = loadTrainableData('img_data/groundtruth.ARW', size)
@@ -85,7 +88,7 @@ if __name__ == '__main__':
             print('Test phase.\n')
             model.eval()
             val_dataset.set_mode('test')
-            psnr = test(model, val_dataset, batch_size, inp_scale)
+            psnr = test(model, val_dataset, batch_size, inp_scale, cuda=cuda)
             model = model.train()
             psnr_best = max(psnr, psnr_best)
             print('Cur psnr:{:1f} dB\tBest psnr:{:1f} dB'.format(psnr, psnr_best))
@@ -101,7 +104,9 @@ if __name__ == '__main__':
         loss_list = list()
         for sample in iterator:
             optimizer.zero_grad()
-            predict = model(sample['data'])
+            if cuda:
+                sample['data'] = Variable(sample['data']).cuda()
+            predict = model(sample['data']).cpu()
             predict = ksigmaTransform(predict / inp_scale, inverse=True)
             true_data = sample['gt']
             # loss = M.L1Loss()(predict.view(predict.shape[0], -1),
@@ -125,6 +130,8 @@ if __name__ == '__main__':
     train_raw.close()
     gt_raw.close()
     gc.collect()
+    if cuda:
+        meg.cuda.empty_cache()
 
     print("----------------------------Training completed-------------------------")
     print("----------------------------Start prediction---------------------------")
@@ -135,7 +142,7 @@ if __name__ == '__main__':
     predict_data = ksigmaTransform(predict_data) * inp_scale
     predict_dataset = NewDataset(predict_data, isTrain=-1)
 
-    output = prediction(predict_dataset, model)
+    output = prediction(predict_dataset, model, cuda=cuda)
     output = ksigmaTransform(meg.stack(output) / inp_scale, inverse=True)
     print("---------------------------Display results----------------------------")
     ori_shape = shape

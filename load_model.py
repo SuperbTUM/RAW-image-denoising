@@ -5,8 +5,10 @@ from pathlib import Path
 from collections import OrderedDict
 
 
-def settings(base_lr=1e-5, pretrained=None):
+def settings(base_lr=1e-5, pretrained=None, cuda=False):
     model = SimpleNet()
+    if cuda:
+        model = model.cuda()
     pretrained = Path(pretrained)
     with pretrained.open("rb") as f:
         states = meg.load(f, map_location=meg.device('cpu'))

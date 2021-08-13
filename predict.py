@@ -6,13 +6,16 @@ from math import *
 from utils import amendment
 
 
-def prediction(data, model):
+def prediction(data, model, cuda):
     data_loader = DataLoaderX(data, batch_size=20, collate_fn=collate, num_workers=0)
     model.training = False
     iterator = tqdm(data_loader)
     out = []
     for sample in iterator:
-        out += model(sample['data'])
+        if cuda:
+            out += model(sample['data']).cpu()
+        else:
+            out += model(sample['data'])
     return out
 
 
