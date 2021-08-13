@@ -104,12 +104,13 @@ if __name__ == '__main__':
             predict = model(sample['data'])
             predict = ksigmaTransform(predict / inp_scale, inverse=True)
             true_data = sample['gt']
-            loss = M.L1Loss()(predict.view(predict.shape[0], -1),
-                              true_data.view(true_data.shape[0], -1))
+            # loss = M.L1Loss()(predict.view(predict.shape[0], -1),
+            #                   true_data.view(true_data.shape[0], -1))
+            loss = L0loss(predict.view(predict.shape[0], -1), true_data.view(true_data.shape[0], -1))
             loss_list.append(loss.detach().numpy())
             loss.backward()
             status = "epoch:{}, lr:{:2e}, loss:{:2e}".format(cur_epoch,
-                                                             lr_scheduler.get_lr()[0], loss)
+                                                             lr_scheduler.get_lr()[0], sum(loss_list)/len(loss_list))
             iterator.set_description(status)
             # meg.optimizer.clip_grad_norm(model.parameters(), 10.0)
             M.utils.clip_grad_norm_(model.parameters(), 10.0)

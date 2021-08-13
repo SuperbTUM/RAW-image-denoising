@@ -97,6 +97,18 @@ def norm(img):
     return img, norm_num
 
 
+def L0loss(predict, gt, gamma=0.5, reduction='mean'):
+    loss = (meg.abs(predict - gt) + 1e-8) ** gamma
+    if reduction == 'mean':
+        return loss.mean()
+    elif reduction == 'sum':
+        return loss.sum()
+    elif reduction is None:
+        return loss
+    else:
+        raise NotImplementedError
+
+
 def pack_raw(raw):
     res = []
     vision = raw.raw_image_visible.astype(np.float32)
