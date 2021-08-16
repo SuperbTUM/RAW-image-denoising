@@ -11,7 +11,10 @@ def settings(base_lr=1e-5, pretrained=None, cuda=False):
         model = model.cuda()
     pretrained = Path(pretrained)
     with pretrained.open("rb") as f:
-        states = meg.load(f, map_location=meg.device('cpu'))
+        if cuda:
+            states = meg.load(f)
+        else:
+            states = meg.load(f, map_location=meg.device('cpu'))
         new_states = OrderedDict()
         new_states = new_states.fromkeys(list(model.state_dict().keys()))
         cnt = 0
