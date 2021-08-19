@@ -27,11 +27,11 @@ from torch.autograd import Variable
 import gc
 
 
-def PSNR(predict, gt):
+def PSNR(predict, gt, max_pixel=256.):
     diff = predict - gt
     diff = diff.flatten()
     rmse = meg.sqrt((diff ** 2).mean())
-    return 20 * meg.log10(1. / rmse)
+    return 20 * meg.log10((max_pixel-1) / rmse + 1e-8)
 
 
 def test(model, val_data, batch_size, inp_scale, cuda):
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     cuda = False
     size = (2016, 3024)
     inp_scale = 256
-    model, optimizer, lr_scheduler = settings(pretrained="torch_pretrained.ckp", cuda=cuda)
+    model, optimizer, lr_scheduler = settings(pretrained="checkpoint.pth", cuda=cuda)
     # model, optimizer, lr_scheduler = settings(cuda=cuda)
 
     train_data, train_raw, train_norm, _ = loadTrainableData('img_data/train.ARW', size)
@@ -64,22 +64,14 @@ if __name__ == '__main__':
     # K-sigma transformation
     train_data = ksigmaTransform(train_data) * inp_scale
 
-    max_epoch, batch_size = 10, 1
+    max_epoch, batch_size = 20, 1
     cur_epoch = 0
     psnr_best = 0.
     loss_mean = list()
 
-    transform = Compose(
-        [UpsideDown()]
-    )
-    # transform = Compose(
-    #     [
-    #         HorizontalFlip(),
-    #         VerticalFlip()
-    #     ]
-    # )
     train_transform = Compose(
-        [BrightnessContrast(train_norm)]
+        [BrightnessContrast(train_norm),
+         UpsideDown()]
     )
     assert train_data.shape == gt_data.shape
     train_dataset = NewDataset(train_data, gt_data, transform=train_transform)
@@ -141,14 +133,13 @@ if __name__ == '__main__':
 
     # model, optimizer, epoch, loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth')
     predict_path = 'img_data/test.ARW'
-    predict_data, predict_raw, norm_num, shape = loadTrainableData(predict_path, size)
+    predict_data, predict_raw, norm_num, ori_shape = loadTrainableData(predict_path, size)
     predict_data = ksigmaTransform(predict_data) * inp_scale
     predict_dataset = NewDataset(predict_data, isTrain=False)
 
     output = prediction(predict_dataset, model, cuda=cuda)
     output = ksigmaTransform(meg.stack(output) / inp_scale, inverse=True)
     print("---------------------------Display results----------------------------")
-    ori_shape = shape
     rggb_img = recovery(ori_shape, output, size)
     show_and_save(rggb_img, norm_num, predict_raw)
     predict_raw.close()
