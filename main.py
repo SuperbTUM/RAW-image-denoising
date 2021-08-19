@@ -1,5 +1,6 @@
 from dataset import *
 from load_model import settings
+# from model_mod.load_anothernet import settings
 from predict import prediction, recovery
 from utils import *
 
@@ -34,26 +35,28 @@ def PSNR(predict, gt):
 
 
 def test(model, val_data, batch_size, inp_scale, cuda):
-    val_dataset = DataLoaderX(val_data, batch_size=batch_size, collate_fn=collate, num_workers=0)
+    val_dataset = DataLoaderX(val_data, batch_size=batch_size, shuffle=False, collate_fn=collate, num_workers=0)
     iterator = tqdm(val_dataset)
     cnt = 0
     psnr = 0.
     for sample in iterator:
         cnt += 1
+        sample['data'] = sample['data'].float()
         if cuda:
             sample['data'] = Variable(sample['data']).cuda()
         out = model(sample['data']).cpu()
         out = ksigmaTransform(out / inp_scale, inverse=True)
-        psnr += PSNR(out, sample['gt'])
+        psnr += PSNR(out, sample['gt'].float())
     iterator.set_description('PSNR is {:.1f}'.format(psnr / cnt))
     return psnr / cnt
 
 
 if __name__ == '__main__':
     cuda = False
-    size = (80, 80)
+    size = (2016, 3024)
     inp_scale = 256
     model, optimizer, lr_scheduler = settings(pretrained="torch_pretrained.ckp", cuda=cuda)
+    # model, optimizer, lr_scheduler = settings(cuda=cuda)
 
     train_data, train_raw, train_norm, _ = loadTrainableData('img_data/train.ARW', size)
     gt_data, gt_raw, _, _ = loadTrainableData('img_data/groundtruth.ARW', size)
@@ -61,7 +64,7 @@ if __name__ == '__main__':
     # K-sigma transformation
     train_data = ksigmaTransform(train_data) * inp_scale
 
-    max_epoch, batch_size = 10, 10
+    max_epoch, batch_size = 10, 1
     cur_epoch = 0
     psnr_best = 0.
     loss_mean = list()
@@ -76,12 +79,11 @@ if __name__ == '__main__':
     #     ]
     # )
     train_transform = Compose(
-        [BrightnessContrast(train_norm),
-         UpsideDown()]
+        [BrightnessContrast(train_norm)]
     )
     assert train_data.shape == gt_data.shape
     train_dataset = NewDataset(train_data, gt_data, transform=train_transform)
-    val_dataset = NewDataset(train_data, gt_data, isTrain=0, transform=train_transform)
+    val_dataset = NewDataset(train_data, gt_data, transform=train_transform)
     print("\n------------------------Start training----------------------------------")
     while True:
         if cur_epoch > 0 and cur_epoch % 2 == 0:
@@ -99,23 +101,24 @@ if __name__ == '__main__':
         # train_dataset = DataLoader(train_data, sampler=RandomSampler(train_data, batch_size=batch_size),
         #                            num_workers=1)
         train_dataloader = DataLoaderX(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate,
-                                       num_workers=1)
+                                       num_workers=0)
         iterator = tqdm(train_dataloader)
         loss_list = list()
         for sample in iterator:
             optimizer.zero_grad()
             if cuda:
                 sample['data'] = Variable(sample['data']).cuda()
+            sample['data'] = sample['data'].float()
             predict = model(sample['data']).cpu()
             predict = ksigmaTransform(predict / inp_scale, inverse=True)
-            true_data = sample['gt']
-            # loss = M.L1Loss()(predict.view(predict.shape[0], -1),
-            #                   true_data.view(true_data.shape[0], -1))
-            loss = L0loss(predict.view(predict.shape[0], -1), true_data.view(true_data.shape[0], -1))
+            true_data = sample['gt'].float()
+            loss = M.L1Loss()(predict.view(predict.shape[0], -1),
+                              true_data.view(true_data.shape[0], -1))
+            # loss = L0loss(predict.view(predict.shape[0], -1), true_data.view(true_data.shape[0], -1))
             loss_list.append(loss.detach().numpy())
             loss.backward()
             status = "epoch:{}, lr:{:2e}, loss:{:2e}".format(cur_epoch,
-                                                             lr_scheduler.get_lr()[0], sum(loss_list)/len(loss_list))
+                                                             lr_scheduler.get_last_lr()[0], sum(loss_list)/len(loss_list))
             iterator.set_description(status)
             # meg.optimizer.clip_grad_norm(model.parameters(), 10.0)
             M.utils.clip_grad_norm_(model.parameters(), 10.0)
@@ -140,7 +143,7 @@ if __name__ == '__main__':
     predict_path = 'img_data/test.ARW'
     predict_data, predict_raw, norm_num, shape = loadTrainableData(predict_path, size)
     predict_data = ksigmaTransform(predict_data) * inp_scale
-    predict_dataset = NewDataset(predict_data, isTrain=-1)
+    predict_dataset = NewDataset(predict_data, isTrain=False)
 
     output = prediction(predict_dataset, model, cuda=cuda)
     output = ksigmaTransform(meg.stack(output) / inp_scale, inverse=True)

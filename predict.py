@@ -7,11 +7,12 @@ from utils import amendment
 
 
 def prediction(data, model, cuda):
-    data_loader = DataLoaderX(data, batch_size=20, collate_fn=collate, num_workers=0)
+    data_loader = DataLoaderX(data, batch_size=1, collate_fn=collate, num_workers=0)
     model.training = False
     iterator = tqdm(data_loader)
     out = []
     for sample in iterator:
+        sample['data'] = sample['data'].float()
         if cuda:
             out += model(sample['data']).cpu()
         else:
@@ -20,14 +21,27 @@ def prediction(data, model, cuda):
 
 
 def recovery(ori_shape, output, size):
+    if size[0] >= ori_shape[1] or size[1] >= ori_shape[2]:
+        # de-padding
+        output = output[0].detach().numpy()
+        diff_x = size[0] - ori_shape[1]
+        diff_y = size[1] - ori_shape[2]
+        return output[:, diff_x // 2:-(diff_x - diff_x // 2),
+                      diff_y // 2:-(diff_y - diff_y // 2)]
+
     cols = ceil(ori_shape[2] / size[1])
     rows = ceil(ori_shape[1] / size[0])
     assert rows * cols == len(output)
-    results = np.zeros((ori_shape[0], rows*size[0], cols*size[1]))
+    results = np.zeros((ori_shape[0], rows * size[0], cols * size[1]))
     for i, out in enumerate(output):
         out = out.detach().numpy()
         out = amendment(out)
-        end_col = (i + 1) % cols * size[1] if (i+1) % cols > 0 else cols*size[1]
+        end_col = (i + 1) % cols * size[1] if (i + 1) % cols > 0 else cols * size[1]
         results[:, i // cols * size[0]:(i // cols + 1) * size[0],
         i % cols * size[1]:end_col] = out
     return results[:, 0:ori_shape[1], 0:ori_shape[2]]
+
+
+if __name__ == '__main__':
+    a = np.zeros((4, 3, 3))
+    print(a[:, 0:-1, 0:-1].shape)
