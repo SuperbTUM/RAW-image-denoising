@@ -4,7 +4,10 @@ import torch as meg
 
 
 class KSigma:
-    def __init__(self, K_coeff: Tuple[float, float], B_coeff: Tuple[float, float, float], anchor: float, V: float = 959.0):
+    def __init__(self, K_coeff: Tuple[float, float],
+                 B_coeff: Tuple[float, float, float],
+                 anchor: float,
+                 V: float = 65024.0):  # 16-bit sensor with black level is 512 per channel
         self.K = np.poly1d(K_coeff)
         self.Sigma = np.poly1d(B_coeff)
         self.anchor = anchor

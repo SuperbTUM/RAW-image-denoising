@@ -92,9 +92,8 @@ class BrightnessContrast(object):
         h, w = sample.shape[1:]
         if meg.rand(1) < self.prob:
             alpha = meg.rand(1) + 0.5
-            beta_ = random.random() * 150 + 50
-            beta = [beta_ / self.norm_num[i] for i in range(4)]
-            bbeta = meg.stack([meg.full((h, w), beta[i]) for i in range(4)])
+            beta = (random.random() * 150 + 50) / self.norm_num
+            bbeta = meg.full((4, h, w), beta)
             sample = alpha * sample + bbeta
             if sample_gt is not None:
                 sample_gt = alpha * sample_gt + bbeta

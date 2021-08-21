@@ -30,8 +30,8 @@ def settings(base_lr=1e-5, pretrained=None, cuda=False):
         model_ckpt = meg.load(pretrained)
         model.load_state_dict(model_ckpt['model'])
         optimizer.load_state_dict(model_ckpt['optimizer'])
+        base_lr = model_ckpt['lr']
     # optimizer = meg.optimizer.Adam(model.parameters(), lr=base_lr, weight_decay=0.0001)
-
     # lr_scheduler = meg.optimizer.LRScheduler(optimizer)
     lr_scheduler = optim.lr_scheduler.CyclicLR(optimizer, base_lr=base_lr, max_lr=1e-3, cycle_momentum=False)
     return model, optimizer, lr_scheduler

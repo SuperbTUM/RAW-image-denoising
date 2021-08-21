@@ -19,11 +19,11 @@ def getRawInfo():
     return info
 
 
-def ksigmaTransform(rggb, inverse=False):
+def ksigmaTransform(rggb, V=65024, inverse=False):
     K_coeff = (0.0005995267, 0.00868861)
     B_coeff = (7.11772e-7, 6.514934e-4, 0.11492713)
     anchor = 1600
-    ksigma = KSigma(K_coeff, B_coeff, anchor)
+    ksigma = KSigma(K_coeff, B_coeff, anchor, V)
     return ksigma(rggb, getRawInfo()['ISO'], inverse=inverse)
 
 
@@ -31,9 +31,8 @@ def loadTrainableData(path, size):
     raw = load_image(path)
     rggb = pack_raw(raw)
     rggb = rggb.transpose(2, 0, 1)
-    rggb, norm_num = norm(rggb)
     data = imageCrop(rggb, size=size)
-    return data, raw, norm_num, rggb.shape
+    return data, raw, rggb.shape
 
 
 def drawLossCurve(loss_mean):
@@ -48,13 +47,12 @@ def drawLossCurve(loss_mean):
     return
 
 
-def saveCheckpoint(model, epoch, optimizer, loss, lr, path):
+def saveCheckpoint(model, l0loss, optimizer, lr, path):
     model.eval()
     meg.save({
-        'epoch': epoch,
+        'loss': l0loss,
         'model': model.state_dict(),
         'optimizer': optimizer.state_dict(),
-        'loss': loss,
         'lr': lr
     }, path
     )
@@ -64,18 +62,15 @@ def loadCheckpoint(model, optimizer, path):
     checkpoint = meg.load(path)
     model.load_state_dict(checkpoint['model'])
     optimizer.load_state_dict(checkpoint['optimizer'])
-    epoch = checkpoint['epoch']
-    loss = checkpoint['loss']
+    l0loss = checkpoint['loss']
     lr = checkpoint['lr']
     model.eval()
-    backup_info = (model, optimizer, epoch, loss, lr)
+    backup_info = (model, optimizer, l0loss, lr)
     return backup_info
 
 
-def show_and_save(img, norm_num, raw):
-    img = img.transpose(1, 2, 0).clip(0, 1)
-    for i in range(4):
-        img[:, :, i] *= norm_num[i]
+def show_and_save(img, raw):
+    img = img.transpose(1, 2, 0)
     new_raw = unpack(img)
     raw.raw_image_visible[:] = new_raw
     rgb_img = raw.postprocess(use_camera_wb=True)
@@ -88,12 +83,8 @@ def show_and_save(img, norm_num, raw):
 
 
 def norm(img):
-    assert img.shape[0] == 4
-    norm_num = []
-    for i in range(img.shape[0]):
-        val = max(map(max, img[i, :, :]))
-        norm_num.append(val)
-        img[i, :, :] /= val
+    norm_num = np.max(img)
+    img /= norm_num
     return img, norm_num
 
 
@@ -133,6 +124,7 @@ def unpack(rggb):
     return np.array(res)
 
 
+# This function is of no use.
 def amendment(rggb):
     rggb[:, 0, 0] = (rggb[:, 1, 0] + rggb[:, 1, 1] + rggb[:, 0, 1]) / 3  # top-left
     rggb[:, -1, 0] = (rggb[:, -2, 0] + rggb[:, -1, 1] + rggb[:, -2, 1]) / 3  # bottom-left

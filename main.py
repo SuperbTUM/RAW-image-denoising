@@ -34,58 +34,63 @@ def PSNR(predict, gt, max_pixel=256.):
     return 20 * meg.log10((max_pixel-1) / rmse + 1e-8)
 
 
-def test(model, val_data, batch_size, inp_scale, cuda):
+def test(model, val_data, batch_size, inp_scale, cuda, V, train_norm):
     val_dataset = DataLoaderX(val_data, batch_size=batch_size, shuffle=False, collate_fn=collate, num_workers=0)
     iterator = tqdm(val_dataset)
     cnt = 0
-    psnr = 0.
+    l0_loss = 0.
     for sample in iterator:
         cnt += 1
         sample['data'] = sample['data'].float()
         if cuda:
             sample['data'] = Variable(sample['data']).cuda()
         out = model(sample['data']).cpu()
-        out = ksigmaTransform(out / inp_scale, inverse=True)
-        psnr += PSNR(out, sample['gt'].float())
-    iterator.set_description('PSNR is {:.1f}'.format(psnr / cnt))
-    return psnr / cnt
+        out = ksigmaTransform(out / inp_scale * train_norm, V=V, inverse=True)
+        l0_loss += L0loss(out, sample['gt'])
+    iterator.set_description('PSNR is {:.1f}'.format(l0_loss / cnt))
+    return l0_loss / cnt
 
 
 if __name__ == '__main__':
     cuda = False
+    # size = (80, 80)
     size = (2016, 3024)
     inp_scale = 256
-    model, optimizer, lr_scheduler = settings(pretrained="checkpoint.pth", cuda=cuda)
-    # model, optimizer, lr_scheduler = settings(cuda=cuda)
+    model, optimizer, lr_scheduler = settings(pretrained="torch_pretrained.ckp", cuda=cuda)
+    # model, optimizer, l0loss, lr = loadCheckpoint(model, optimizer, "checkpoint.pth")
+    # model, optimizer, lr_scheduler = settings(pretrained="torch_pretrained.ckp", cuda=cuda)
 
-    train_data, train_raw, train_norm, _ = loadTrainableData('img_data/train.ARW', size)
-    gt_data, gt_raw, _, _ = loadTrainableData('img_data/groundtruth.ARW', size)
+    train_data, train_raw, _ = loadTrainableData('img_data/train.ARW', size)
+    gt_data, gt_raw, _ = loadTrainableData('img_data/groundtruth.ARW', size)
 
     # K-sigma transformation
-    train_data = ksigmaTransform(train_data) * inp_scale
+    V = 2 ** 16 - train_raw.black_level_per_channel[0]
+    train_data = ksigmaTransform(train_data, V=V)
+    train_data, train_norm = norm(train_data)
+    train_data *= inp_scale
 
     max_epoch, batch_size = 20, 1
     cur_epoch = 0
-    psnr_best = 0.
+    l0loss_least = 10.
     loss_mean = list()
 
     train_transform = Compose(
-        [BrightnessContrast(train_norm),
-         UpsideDown()]
+        [BrightnessContrast(train_norm)]
     )
     assert train_data.shape == gt_data.shape
     train_dataset = NewDataset(train_data, gt_data, transform=train_transform)
-    val_dataset = NewDataset(train_data, gt_data, transform=train_transform)
     print("\n------------------------Start training----------------------------------")
     while True:
         if cur_epoch > 0 and cur_epoch % 2 == 0:
-            print('Test phase.\n')
+            print('\nTest phase.')
             model.eval()
-            val_dataset.set_mode('test')
-            psnr = test(model, val_dataset, batch_size, inp_scale, cuda=cuda)
+            train_dataset.set_mode('test')
+            l0loss = test(model, train_dataset, batch_size, inp_scale, cuda=cuda, V=V, train_norm=train_norm)
+            if l0loss < l0loss_least:
+                l0loss_least = l0loss
+                saveCheckpoint(model, l0loss, optimizer, lr_scheduler.get_last_lr()[0], 'checkpoint.pth')
+            print('Cur l0loss:{:.1e}, Least l0loss:{:.1e}'.format(l0loss, l0loss_least))
             model = model.train()
-            psnr_best = max(psnr, psnr_best)
-            print('Cur psnr:{:1f} dB\tBest psnr:{:1f} dB'.format(psnr, psnr_best))
 
         if cur_epoch >= max_epoch:
             break
@@ -102,15 +107,16 @@ if __name__ == '__main__':
                 sample['data'] = Variable(sample['data']).cuda()
             sample['data'] = sample['data'].float()
             predict = model(sample['data']).cpu()
-            predict = ksigmaTransform(predict / inp_scale, inverse=True)
+            predict = ksigmaTransform(predict / inp_scale * train_norm, V=V, inverse=True)
             true_data = sample['gt'].float()
             loss = M.L1Loss()(predict.view(predict.shape[0], -1),
                               true_data.view(true_data.shape[0], -1))
             # loss = L0loss(predict.view(predict.shape[0], -1), true_data.view(true_data.shape[0], -1))
             loss_list.append(loss.detach().numpy())
             loss.backward()
-            status = "epoch:{}, lr:{:2e}, loss:{:2e}".format(cur_epoch,
-                                                             lr_scheduler.get_last_lr()[0], sum(loss_list)/len(loss_list))
+            status = "epoch:{}, lr:{:.2e}, loss:{:.2e}".format(cur_epoch,
+                                                               lr_scheduler.get_last_lr()[0],
+                                                               sum(loss_list)/len(loss_list))
             iterator.set_description(status)
             # meg.optimizer.clip_grad_norm(model.parameters(), 10.0)
             M.utils.clip_grad_norm_(model.parameters(), 10.0)
@@ -120,7 +126,6 @@ if __name__ == '__main__':
         loss_mean.append(sum(loss_list) / len(loss_list))
         gc.collect()
 
-    saveCheckpoint(model, cur_epoch, optimizer, loss, lr_scheduler.get_lr()[0], 'checkpoint.pth')
     # drawLossCurve(loss_mean)
     train_raw.close()
     gt_raw.close()
@@ -131,15 +136,17 @@ if __name__ == '__main__':
     print("----------------------------Training completed-------------------------")
     print("----------------------------Start prediction---------------------------")
 
-    # model, optimizer, epoch, loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth')
+    model, optimizer, l0loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth')
     predict_path = 'img_data/test.ARW'
-    predict_data, predict_raw, norm_num, ori_shape = loadTrainableData(predict_path, size)
-    predict_data = ksigmaTransform(predict_data) * inp_scale
+    predict_data, predict_raw, ori_shape = loadTrainableData(predict_path, size)
+    predict_data = ksigmaTransform(predict_data, V=V)
+    predict_data, norm_num = norm(predict_data)
+    predict_data *= inp_scale
     predict_dataset = NewDataset(predict_data, isTrain=False)
 
-    output = prediction(predict_dataset, model, cuda=cuda)
-    output = ksigmaTransform(meg.stack(output) / inp_scale, inverse=True)
+    output = prediction(predict_dataset, model, batch_size=batch_size, cuda=cuda)
+    output = ksigmaTransform(meg.stack(output) / inp_scale * norm_num, V=V, inverse=True)
     print("---------------------------Display results----------------------------")
     rggb_img = recovery(ori_shape, output, size)
-    show_and_save(rggb_img, norm_num, predict_raw)
+    show_and_save(rggb_img, predict_raw)
     predict_raw.close()

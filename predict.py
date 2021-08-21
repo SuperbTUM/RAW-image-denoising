@@ -6,8 +6,8 @@ from math import *
 from utils import amendment
 
 
-def prediction(data, model, cuda):
-    data_loader = DataLoaderX(data, batch_size=1, collate_fn=collate, num_workers=0)
+def prediction(data, model, batch_size, cuda):
+    data_loader = DataLoaderX(data, batch_size=batch_size, collate_fn=collate, num_workers=0)
     model.training = False
     iterator = tqdm(data_loader)
     out = []
