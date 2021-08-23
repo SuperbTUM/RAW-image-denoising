@@ -71,7 +71,7 @@ if __name__ == '__main__':
 
     max_epoch, batch_size = 20, 1
     cur_epoch = 0
-    l0loss_least = 10.
+    l0loss_least = 3.35
     loss_mean = list()
 
     train_transform = Compose(

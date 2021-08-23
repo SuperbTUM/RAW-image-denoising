@@ -7,6 +7,7 @@ import rawpy
 import matplotlib.pyplot as plt
 from dataset import load_image, imageCrop
 from K_Sigma_transform import KSigma
+from scipy.optimize import leastsq
 
 
 def getRawInfo():
@@ -17,6 +18,29 @@ def getRawInfo():
         "Exposure Compensation": 0
     }
     return info
+
+
+def rgb2gray(rgbs):
+    assert rgbs.shape[-1] == 3
+    return 0.2126 * rgbs[:, :, :, 0] + 0.7152 * rgbs[:, :, :, 1] + 0.0722 * rgbs[:, :, :, 2]
+
+
+def cal_kb(rgbs):
+    def fun(p, x):
+        k, b = p
+        return k * x + b
+
+    def error(p, x, y):
+        return fun(p, x) - y
+    grayscales = rgb2gray(rgbs)
+    mean = grayscales.mean(dim=1)
+    var = grayscales.var(dim=1, unbiased=True)
+    mean = mean.flatten().numpy()
+    var = var.flatten().numpy()
+    p0 = np.array([1, 3])
+    param = leastsq(error, p0, args=(mean, var))
+    k, b = param[0]
+    return k, b
 
 
 def ksigmaTransform(rggb, V=65024, inverse=False):
@@ -124,7 +148,6 @@ def unpack(rggb):
     return np.array(res)
 
 
-# This function is of no use.
 def amendment(rggb):
     rggb[:, 0, 0] = (rggb[:, 1, 0] + rggb[:, 1, 1] + rggb[:, 0, 1]) / 3  # top-left
     rggb[:, -1, 0] = (rggb[:, -2, 0] + rggb[:, -1, 1] + rggb[:, -2, 1]) / 3  # bottom-left
@@ -151,5 +174,4 @@ if __name__ == '__main__':
     cv2.imshow('image', rgb)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    # cv2.imwrite('test_img.jpg', rgb)
-
+    cv2.imwrite('test_img.jpg', rgb)
