@@ -33,11 +33,13 @@ def cal_kb(rgbs):
     def error(p, x, y):
         return fun(p, x) - y
     grayscales = rgb2gray(rgbs)
-    mean = grayscales.mean(dim=1)
-    var = grayscales.var(dim=1, unbiased=True)
+    mean = grayscales.mean(dim=[0,1])
+    var = grayscales.var(dim=[0,1], unbiased=True)
     mean = mean.flatten().numpy()
     var = var.flatten().numpy()
-    p0 = np.array([1, 3])
+    init_k = (var[0]-var[1]) / (mean[0]-mean[1])
+    init_b = var[0] - init_k * mean[0]
+    p0 = np.array([init_k, init_b])
     param = leastsq(error, p0, args=(mean, var))
     k, b = param[0]
     return k, b
