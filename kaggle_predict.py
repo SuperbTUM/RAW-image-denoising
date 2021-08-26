@@ -6,6 +6,8 @@ from dataset import NewDataset, collate
 from predict import recovery
 from skimage.metrics import peak_signal_noise_ratio
 from imageio import mimsave
+from load_data import loadTestData
+from K_Sigma_transform import ksigmaTransform
 
 
 def new_predict(train_path='kaggle_img/input_new.raw',
@@ -15,10 +17,10 @@ def new_predict(train_path='kaggle_img/input_new.raw',
                 inp_scale=256,
                 batch_size=1):
     model, optimizer, _ = settings(pretrained=None, cuda=cuda)
-    model, optimizer, l0loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth')
+    model, optimizer, l0loss, lr = loadCheckpoint(model, optimizer, 'checkpoint.pth', cuda)
 
-    train_data, train_raw, ori_shape = loadTrainableData(train_path, size)
-    gt_data, gt_raw, _ = loadTrainableData(gt_path, size)
+    train_data, train_raw, ori_shape = loadTestData(train_path, size)
+    gt_data, gt_raw, _ = loadTestData(gt_path, size)
 
     gt_rgb = gt_raw.postprocess(use_camera_wb=True)
     ori_psnr = peak_signal_noise_ratio(train_raw.postprocess(use_camera_wb=True),
@@ -65,10 +67,10 @@ if __name__ == "__main__":
     ori_psnr, cur_psnr, predict_rgb = new_predict()
     print('original psnr is {:.2f} dB'.format(ori_psnr))
     print('current psnr is {:.2f} dB'.format(cur_psnr))
-    gt_raw = rawpy.imread("kaggle_img/gt_new.raw")
-    gt_rgb = gt_raw.postprocess(use_camera_wb=True)
-    cv2.imwrite("kaggle_img/kaggle_gt.jpg", gt_rgb)
-    train_raw = rawpy.imread('kaggle_img/input_new.raw')
-    train_rgb = train_raw.postprocess(use_camera_wb=True)
-    cv2.imwrite("kaggle_img/kaggle_train.jpg", train_rgb)
+    # gt_raw = rawpy.imread("kaggle_img/gt_new.raw")
+    # gt_rgb = gt_raw.postprocess(use_camera_wb=True)
+    # cv2.imwrite("kaggle_img/kaggle_gt.jpg", gt_rgb)
+    # train_raw = rawpy.imread('kaggle_img/input_new.raw')
+    # train_rgb = train_raw.postprocess(use_camera_wb=True)
+    # cv2.imwrite("kaggle_img/kaggle_train.jpg", train_rgb)
     cv2.imwrite("kaggle_img/kaggle_predict.jpg", predict_rgb)

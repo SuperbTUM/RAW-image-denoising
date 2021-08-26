@@ -5,12 +5,6 @@ import torch as meg
 from torch.utils.data import Dataset
 
 
-def load_image(path):
-    raw = rawpy.imread(path)
-    # raw.close()
-    return raw
-
-
 def imageCrop(rggb, size):
     h, w = size
     overall_h, overall_w = rggb.shape[1], rggb.shape[2]
@@ -18,7 +12,7 @@ def imageCrop(rggb, size):
         padding_x = h % overall_h
         padding_y = w % overall_w
         rggb = np.pad(rggb, ((0, 0), (padding_x // 2, padding_x - padding_x // 2),
-                             (padding_y // 2, padding_y - padding_y // 2)), 'constant', constant_values=0)
+                             (padding_y // 2, padding_y - padding_y // 2)), 'reflect')
         return np.array([rggb])
 
     img_list = list()
@@ -43,43 +37,18 @@ def imageCrop(rggb, size):
     return np.array(img_list)
 
 
-class UpsideDown(object):
+class G_Exchange(object):
     def __init__(self, prob=0.5):
         self.prob = prob
 
     def __call__(self, inputs):
         sample, sample_gt = inputs
-        if sample_gt is None:
-            return (sample, None) if np.random.random(1) < self.prob else (sample.flip(dims=[1, 2]), None)
-        if meg.rand(1) < self.prob:
-            return sample, sample_gt
-        return sample.flip(dims=[1, 2]), sample_gt.flip(dims=[1, 2])
-
-
-class HorizontalFlip(object):
-    def __init__(self, prob=0.5):
-        self.prob = prob
-
-    def __call__(self, inputs):
-        sample, sample_gt = inputs
-        if sample_gt is None:
-            return (sample, None) if np.random.random(1) < self.prob else (sample.flip(dims=[2]), None)
-        if np.random.random(1) < self.prob:
-            return sample, sample_gt
-        return sample.flip(dims=[2]), sample_gt.flip(dims=[2])
-
-
-class VerticalFlip(object):
-    def __init__(self, prob=0.5):
-        self.prob = prob
-
-    def __call__(self, inputs):
-        sample, sample_gt = inputs
-        if sample_gt is None:
-            return (sample, None) if np.random.random(1) < self.prob else (sample.flip(dims=[1]), None)
-        if np.random.random(1) < self.prob:
-            return sample, sample_gt
-        return sample.flip(dims=[1]), sample_gt.flip(dims=[1])
+        rand = random.random()
+        if rand > self.prob:
+            sample[1, :, :], sample[2, :, :] = sample[2, :, :], sample[1, :, :]
+            if sample_gt is not None:
+                sample_gt[1, :, :], sample_gt[2, :, :] = sample_gt[2, :, :], sample_gt[1, :, :]
+        return sample, sample_gt
 
 
 class BrightnessContrast(object):
