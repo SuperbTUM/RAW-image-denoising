@@ -10,6 +10,7 @@ import torch.nn as M
 from torchvision.transforms import Compose
 from torch.autograd import Variable
 import gc
+from skimage.metrics import structural_similarity
 
 # import megengine as meg
 # import megengine.module as M
@@ -45,11 +46,11 @@ def test(model, val_data, batch_size, inp_scale, cuda, V, train_norm):
 
 if __name__ == '__main__':
     cuda = False
-    # size = (80, 80)
-    size = (2016, 3024)
+    size = (80, 80)
+    # size = (2016, 3024)
     inp_scale = 256
-    model, optimizer, lr_scheduler = settings(pretrained="checkpoint.pth", cuda=cuda)
-    max_epoch, batch_size = 10, 1
+    model, optimizer, lr_scheduler = settings(pretrained="torch_pretrained.ckp", cuda=cuda)
+    max_epoch, batch_size = 20, 10
     cur_epoch = 0
     l0loss_least = 10.
     loss_mean = list()
@@ -79,7 +80,7 @@ if __name__ == '__main__':
             l0loss = test(model, train_dataset, batch_size, inp_scale, cuda=cuda, V=V, train_norm=train_norm)
             if l0loss < l0loss_least:
                 l0loss_least = l0loss
-                saveCheckpoint(model, l0loss, optimizer, lr_scheduler.get_last_lr()[0], 'checkpoint.pth')
+                saveCheckpoint(model, l0loss, optimizer, lr_scheduler.get_last_lr()[0], 'checkpoint_cropped.pth')
             print('Cur l0loss:{:.1e}, Least l0loss:{:.1e}'.format(l0loss, l0loss_least))
             model = model.train()
 

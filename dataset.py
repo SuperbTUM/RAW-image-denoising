@@ -15,26 +15,35 @@ def imageCrop(rggb, size):
                              (padding_y // 2, padding_y - padding_y // 2)), 'reflect')
         return np.array([rggb])
 
+    # first padding
+    rggb = np.pad(rggb, ((0, 0), (8, 8), (8, 8)), 'reflect')
+    rh, rw = h + 16, w + 16
     img_list = list()
     rows = overall_h // h
     cols = overall_w // w
     for row in range(rows):
         for col in range(cols):
-            img_list.append(rggb[:, h * row:h * (row + 1), w * col:w * (col + 1)])
+            img_list.append(rggb[:, h * row:h * row + rh, w * col:w * col + rw])
         if overall_w % w:
-            temp = np.zeros((rggb.shape[0], h, w))
-            temp[:, 0:h, 0:(overall_w - w * cols)] = rggb[:, h * row:h * (row + 1), w * cols:]
+            seg = rggb[:, h * row:h * row + rh, w * cols:]
+            temp = np.pad(seg, ((0, 0), (0, 0),
+                                (0, rw-seg.shape[2])), 'reflect')
+            assert temp.shape[1:] == (rh, rw)
             img_list.append(temp)
     if overall_h % h:
         for col in range(cols):
-            temp = np.zeros((rggb.shape[0], h, w))
-            temp[:, 0:(overall_h - h * rows), 0:w] = rggb[:, h * rows:, w * col:w * (col + 1)]
+            seg = rggb[:, h * rows:, w * col:w * col + rw]
+            temp = np.pad(seg, ((0, 0), (0, rh-seg.shape[1]), (0, 0)),
+                          'reflect')
+            assert temp.shape[1:] == (rh, rw)
             img_list.append(temp)
         if overall_w % w:
-            temp = np.zeros((rggb.shape[0], h, w))
-            temp[:, 0:(overall_h - h * rows), 0:(overall_w - w * cols)] = rggb[:, h * rows:, w * cols:]
+            seg = rggb[:, h * rows:, w * cols:]
+            temp = np.pad(seg, ((0, 0), (0, rh-seg.shape[1]), (0, rw-seg.shape[2])),
+                          'reflect')
+            assert temp.shape[1:] == (rh, rw)
             img_list.append(temp)
-    return np.array(img_list)
+    return np.array(img_list).astype(np.float32)
 
 
 class G_Exchange(object):
@@ -116,7 +125,5 @@ class NewDataset(Dataset):
 
 if __name__ == "__main__":
     a = np.ones((4, 2, 2))
-    b = [1, 2]
-    b = np.tile(b, (4, 2, 1))
-    print(b)
-    print(a + b)
+    a = np.pad(a, ((0,0), (0,0), (1,2)), 'reflect')
+    print(a.shape)

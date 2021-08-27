@@ -3,7 +3,6 @@ from tqdm import *
 from utils import DataLoaderX
 from dataset import collate
 from math import *
-from utils import amendment
 
 
 def prediction(data, model, batch_size, cuda):
@@ -29,13 +28,14 @@ def recovery(ori_shape, output, size):
         return output[:, diff_x // 2:-(diff_x - diff_x // 2),
                       diff_y // 2:-(diff_y - diff_y // 2)]
 
-    cols = ceil(ori_shape[2] / size[1])
-    rows = ceil(ori_shape[1] / size[0])
+    h, w = size[0], size[1]
+    cols = ceil(ori_shape[2] / w)
+    rows = ceil(ori_shape[1] / h)
     assert rows * cols == len(output)
     results = np.zeros((ori_shape[0], rows * size[0], cols * size[1]))
     for i, out in enumerate(output):
         out = out.detach().numpy()
-        out = amendment(out)
+        out = out[:, 8:-8, 8:-8]
         end_col = (i + 1) % cols * size[1] if (i + 1) % cols > 0 else cols * size[1]
         results[:, i // cols * size[0]:(i // cols + 1) * size[0],
         i % cols * size[1]:end_col] = out
