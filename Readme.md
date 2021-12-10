@@ -2,7 +2,7 @@
 
 ### Introduction
 
-Reference: [Practical Deep Raw Image Denoising on Mobile Devices](https://arxiv.org/abs/2010.06935), 2020 CVPR
+Reference: [Practical Deep Raw Image Denoising on Mobile Devices](https://arxiv.org/abs/2010.06935), 2020 ECCV
 
 [Learning Raw Image Denoising with Bayer Pattern Unification and Bayer Preserving Augmentation](https://arxiv.org/abs/1904.12945), 2019 CVPR	
 
